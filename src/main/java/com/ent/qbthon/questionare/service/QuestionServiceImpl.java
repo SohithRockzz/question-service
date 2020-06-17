@@ -1,10 +1,7 @@
 package com.ent.qbthon.questionare.service;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
@@ -15,13 +12,7 @@ import java.util.Random;
 import java.util.stream.Collectors;
 
 import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellStyle;
-import org.apache.poi.ss.usermodel.CreationHelper;
-import org.apache.poi.ss.usermodel.Font;
-import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -75,39 +66,54 @@ public class QuestionServiceImpl implements QuestionService {
 	@Autowired
 	QuestionaExcelMapper questionaExcelMapper;
 
-	private static String[] columns = { "Blooms Taxonomy", "Difficulty", "Category", "Multiple Answer", "Topic",
-			"Question", "Option 1", "Correct Answer 1", "Option 2", "Correct Answer 2", "Option 3", "Correct Answer 3",
-			"Option 4", "Correct Answer 4", "Source" };
-	
-
+	private int smeListSize = 0;
+	private int currentSmeIndex = 0;
+	Random random = new Random();
 
 	public boolean saveQuestion(String userId, String eventId, MultipartFile userQuestionExcelDataFile, String question)
 			throws IOException {
-		log.info("Inside saveQuestion method QuestionServiceImpl Service--->");
+		log.info("Inside saveQuestion method QuestionServiceImpl Service::");
 		List<Questionare> questionareList = new ArrayList<>();
-		List<Questionare> excelQuestionareList = new ArrayList<>();
+		List<Questionare> questionarexcelList = new ArrayList<>();
 		boolean status = false;
 		try {
 			Gson gson = new Gson();
 			if (!StringUtils.isEmpty(question) && !question.equals("null")) {
 				questionareList.add(gson.fromJson(question, Questionare.class));
 			}
-			if(userQuestionExcelDataFile!=null) {
-				excelQuestionareList = getIdFromExcel(userQuestionExcelDataFile, userId, eventId);				
+			if (userQuestionExcelDataFile != null) {
+				questionarexcelList = getIdFromExcel(userQuestionExcelDataFile, userId, eventId);
 			}
-			if (!CollectionUtils.isEmpty(excelQuestionareList)) {
-				questionareList.addAll(excelQuestionareList);
+			if (!CollectionUtils.isEmpty(questionarexcelList)) {
+				questionareList.addAll(questionarexcelList);
 			}
 
 			List<UserEvent> userEventDetailList = userEventRepository.findByEventIdAndRole(eventId, "SME");
-			questionareList.forEach(ques->{
-				ques.setAssignedSme(userEventDetailList.get(0).getUserId());
-				ques.setStatus("Under Review");
+			List<UserEvent> filteredUserEventDetailList = userEventDetailList.stream()
+					.filter(userEvent -> userEvent.getUserId() != userId).collect(Collectors.toList());
+			this.smeListSize = userEventDetailList.size();
+			questionareList.forEach(questionare -> {
+				if (this.smeListSize > 0) {
+					questionare.setAssignedSme(filteredUserEventDetailList.get(this.currentSmeIndex).getUserId());
+					questionare.setStatus("Under Review");
+					log.info("assigned sme->" + userEventDetailList.get(this.currentSmeIndex).getUserId()
+							+ " which is at ->" + this.currentSmeIndex + " position");
+					++this.currentSmeIndex;
+				} else {
+					throw new QbthonQuestionareServiceException("Something went wrong");
+				}
+				if (this.currentSmeIndex > this.smeListSize - 1) {
+					this.currentSmeIndex = 0;
+				}
 			});
+
 			if (!CollectionUtils.isEmpty(questionareList)) {
 				questionareRepository.saveAll(questionareList);
 				status = true;
 			}
+
+		}catch (QbthonQuestionareServiceException e) {
+			throw e;
 
 		} catch (Exception e) {
 			log.error("Error in saveQuestionare", e);
@@ -118,7 +124,7 @@ public class QuestionServiceImpl implements QuestionService {
 	}
 
 	public boolean updateReviewQuestionStatus(String questionId, String reviewStatus, String comment) {
-		log.info("Inside updateReviewQuestionStatus method QuestionServiceImpl Service--->");
+		log.info("Inside updateReviewQuestionStatus method QuestionServiceImpl Service:::");
 		boolean status = false;
 		try {
 			Questionare questionare = questionareRepository.findById(questionId).orElse(null);
@@ -139,7 +145,7 @@ public class QuestionServiceImpl implements QuestionService {
 	}
 
 	public boolean updateQuestion(Questionare questionare) {
-		log.info("Inside updateQuestion method QuestionServiceImpl Service--->");
+		log.info("Inside updateQuestion method QuestionServiceImpl Service:::");
 		boolean status = false;
 		try {
 			if (questionare.getStatus().equals("Rejected")) {
@@ -167,6 +173,9 @@ public class QuestionServiceImpl implements QuestionService {
 				log.error("Error in updateQuestion");
 				throw new QbthonQuestionareServiceException("Only Rejected Questions Can Be Updated");
 			}
+		}catch (QbthonQuestionareServiceException e) {
+			throw e;
+
 		} catch (Exception e) {
 			log.error("Error in updateQuestion", e);
 			throw new QbthonQuestionareServiceException("Something Went Wrong", e);
@@ -174,65 +183,78 @@ public class QuestionServiceImpl implements QuestionService {
 		return status;
 	}
 	
-	public Map<String, List<Questionare>> getUserQuestions(String eventId, String userId){
-		log.info("Getting Questions for User and Event Related:::::");
+	public Map<String, List<Questionare>> getQuestionsAssignedToSME(String eventId, String smeId) {
+		log.info("Getting User Questions for User and Event Related:::");
 		List<Questionare> questionareList = new ArrayList<>();
 		Map<String, List<Questionare>> questionareStatusMap = new HashMap<>();
 		try {
-			questionareList = questionareRepository.findByEventIdAndUserId(eventId,userId);
-			questionareStatusMap.put("Under Review", new ArrayList<>());
-			questionareStatusMap.put("Rejected", new ArrayList<>());
-			questionareStatusMap.put("Partially Accepted", new ArrayList<>());
-			questionareStatusMap.put("Accepted", new ArrayList<>());
-
-			if(questionareList.size()>0) {
-				questionareList.parallelStream().forEach(ques -> {
-					if (ques.getStatus().equals("Under Review")) {
-						questionareStatusMap.get("Under Review").add(ques);
-					} else if (ques.getStatus().equals("Partially Accepted")) {
-						questionareStatusMap.get("Partially Accepted").add(ques);
-					} else if (ques.getStatus().equals("Accepted")) {
-						questionareStatusMap.get("Accepted").add(ques);
-					} else if (ques.getStatus().equals("Rejected")) {
-						questionareStatusMap.get("Rejected").add(ques);
-					}
-				});
-			}
+			questionareList = questionareRepository.findAllByEventIdAndAssignedSme(eventId, smeId);
+			questionareStatusMap = getQuestionStatusMap( questionareList);
 		}catch (Exception e) {
-			log.error("Error in getQuestions", e);
+			log.error("Error in getUserQuestions", e);
+			throw new QbthonQuestionareServiceException("Something went wrong", e);
+		}
+       return questionareStatusMap;
+	}
+
+	public Map<String, List<Questionare>> getUserQuestions(String eventId, String userId) {
+		log.info("Getting User Questions for User and Event Related:::");
+		List<Questionare> questionareList = new ArrayList<>();
+		Map<String, List<Questionare>> questionareStatusMap = new HashMap<>();
+		try {
+			if (!StringUtils.isEmpty(eventId) && !StringUtils.isEmpty(userId)) {
+				questionareList = questionareRepository.findByEventIdAndUserId(eventId, userId);
+			} else if (!StringUtils.isEmpty(eventId) && StringUtils.isEmpty(userId)) {
+				questionareList = questionareRepository.findByEventId(eventId);
+			} else {
+				log.error("Empty attributes in getUserQuestions");
+				throw new QbthonQuestionareServiceException("Empty attributes in getUserQuestions");
+			}
+			questionareStatusMap = getQuestionStatusMap( questionareList);
+		} catch (QbthonQuestionareServiceException e) {
+			throw e;
+
+		} catch (Exception e) {
+			log.error("Error in getUserQuestions", e);
 			throw new QbthonQuestionareServiceException("Something went wrong", e);
 		}
 		return questionareStatusMap;
 	}
-
-	public Map<String, List<Questionare>> getQuestions(String eventId) {
-		log.info("Inside getQuestions method QuestionServiceImpl Service--->");
-		List<Questionare> questionareList = new ArrayList<>();
+	
+//	public Map<String, List<Questionare>> getQuestions(String eventId) {
+//		log.info("Inside getQuestions method QuestionServiceImpl Service:::");
+//		List<Questionare> questionareList = new ArrayList<>();
+//		Map<String, List<Questionare>> questionareStatusMap = new HashMap<>();
+//		try {
+//			questionareList = questionareRepository.findByEventId(eventId);
+//			questionareStatusMap = getQuestionStatusMap( questionareList);
+//
+//		} catch (Exception e) {
+//			log.error("Error in getQuestions", e);
+//			throw new QbthonQuestionareServiceException("Something went wrong", e);
+//		}
+//		return questionareStatusMap;
+//	}
+//	
+	private Map<String, List<Questionare>> getQuestionStatusMap(List<Questionare> questionareList) {
 		Map<String, List<Questionare>> questionareStatusMap = new HashMap<>();
-		try {
-			questionareList = questionareRepository.findByEventId(eventId);
-			questionareStatusMap.put("Under Review", new ArrayList<>());
-			questionareStatusMap.put("Rejected", new ArrayList<>());
-			questionareStatusMap.put("Partially Accepted", new ArrayList<>());
-			questionareStatusMap.put("Accepted", new ArrayList<>());
+		questionareStatusMap.put("Under Review", new ArrayList<>());
+		questionareStatusMap.put("Rejected", new ArrayList<>());
+		questionareStatusMap.put("Partially Accepted", new ArrayList<>());
+		questionareStatusMap.put("Accepted", new ArrayList<>());
 
-			if(questionareList.size()>0) {
-				questionareList.parallelStream().forEach(ques -> {
-					if (ques.getStatus().equals("Under Review")) {
-						questionareStatusMap.get("Under Review").add(ques);
-					} else if (ques.getStatus().equals("Partially Accepted")) {
-						questionareStatusMap.get("Partially Accepted").add(ques);
-					} else if (ques.getStatus().equals("Accepted")) {
-						questionareStatusMap.get("Accepted").add(ques);
-					} else if (ques.getStatus().equals("Rejected")) {
-						questionareStatusMap.get("Rejected").add(ques);
-					}
-				});
-			}
-			
-		} catch (Exception e) {
-			log.error("Error in getQuestions", e);
-			throw new QbthonQuestionareServiceException("Something went wrong", e);
+		if (questionareList.size() > 0) {
+			questionareList.parallelStream().forEach(ques -> {
+				if (ques.getStatus().equals("Under Review")) {
+					questionareStatusMap.get("Under Review").add(ques);
+				} else if (ques.getStatus().equals("Partially Accepted")) {
+					questionareStatusMap.get("Partially Accepted").add(ques);
+				} else if (ques.getStatus().equals("Accepted")) {
+					questionareStatusMap.get("Accepted").add(ques);
+				} else if (ques.getStatus().equals("Rejected")) {
+					questionareStatusMap.get("Rejected").add(ques);
+				}
+			});
 		}
 		return questionareStatusMap;
 	}
@@ -250,33 +272,33 @@ public class QuestionServiceImpl implements QuestionService {
 		return questionareExcelList;
 	}
 
-	public Map<String,Map<String,Long>> getEventSpecificData(String eventId) {
-		Map<String,Map<String,Long>> graphEventSpecifcData = new HashMap<>();
+	public Map<String, Map<String, Long>> getEventSpecificData(String eventId) {
+		Map<String, Map<String, Long>> graphEventSpecifcData = new HashMap<>();
 		try {
-	     List<Questionare> eventStatusSpecificList =	(List<Questionare>) questionareRepository.findByEventId(eventId);
-	     Map<String, Long> groupByStatusMap = eventStatusSpecificList.stream()
+			List<Questionare> eventStatusSpecificList = (List<Questionare>) questionareRepository
+					.findByEventId(eventId);
+			Map<String, Long> groupByStatusMap = eventStatusSpecificList.stream()
 					.collect(Collectors.groupingBy(Questionare::getStatus, Collectors.counting()));
-	     Map<String, Long> groupByCategoryMap = eventStatusSpecificList.stream()
+			Map<String, Long> groupByCategoryMap = eventStatusSpecificList.stream()
 					.collect(Collectors.groupingBy(Questionare::getCategory, Collectors.counting()));
-	     groupByCategoryMap.putIfAbsent("Application", Long.parseLong("0")); 
-	     groupByCategoryMap.putIfAbsent("Comprehension", Long.parseLong("0")); 
-	     groupByCategoryMap.putIfAbsent("Analysis", Long.parseLong("0")); 
-	     graphEventSpecifcData.put("StatusCount", groupByStatusMap);
-	     
-	  
-	     graphEventSpecifcData.put("CategoryCount", groupByCategoryMap);
+			groupByCategoryMap.putIfAbsent("Application", Long.parseLong("0"));
+			groupByCategoryMap.putIfAbsent("Comprehension", Long.parseLong("0"));
+			groupByCategoryMap.putIfAbsent("Analysis", Long.parseLong("0"));
+			graphEventSpecifcData.put("StatusCount", groupByStatusMap);
+
+			graphEventSpecifcData.put("CategoryCount", groupByCategoryMap);
 		} catch (QbthonQuestionareServiceException e) {
 			log.error("Error in saveEvent", e);
 			throw e;
-		}catch (Exception e) {
+		} catch (Exception e) {
 			log.error("Error in getEventDetails", e);
 			throw new QbthonQuestionareServiceException("Something Went Wrong", e);
 		}
 		return graphEventSpecifcData;
 	}
-	
+
 	public List<User> getEarlyBirds(String eventId) {
-		List<User> userDescriptionList=new ArrayList<>();
+		List<User> userDescriptionList = new ArrayList<>();
 		try {
 			List<Questionare> acceptedQuestionsList = questionareRepository.findByEventIdAndStatus(eventId, "Accepted");
 			Map<String, List<Questionare>> groupByUserIdMap = acceptedQuestionsList.stream()
@@ -284,13 +306,13 @@ public class QuestionServiceImpl implements QuestionService {
 			if (groupByUserIdMap.size() > 0) {
 				groupByUserIdMap.forEach((userId, questionList) -> {
 					questionList.sort(Comparator.comparing(Questionare::getUpdateTime, (s1, s2) -> {
-			            return Long.compare(s1.getTime(), s2.getTime());
-			        }));
+						return Long.compare(s1.getTime(), s2.getTime());
+					}));
 				});
 				long timeOne = 0;
 				long timeTwo = 0;
-				String userOneId ="";
-				String userTwoId= "";
+				String userOneId = "";
+				String userTwoId = "";
 				for (String userId : groupByUserIdMap.keySet()) {
 					if (groupByUserIdMap.get(userId).size() >= 2) {
 						if (timeOne == 0 && timeTwo == 0) {
@@ -301,27 +323,26 @@ public class QuestionServiceImpl implements QuestionService {
 								&& groupByUserIdMap.get(userId).get(1).getUpdateTime().getTime() < timeTwo) {
 							timeOne = groupByUserIdMap.get(userId).get(0).getUpdateTime().getTime();
 							timeTwo = groupByUserIdMap.get(userId).get(1).getUpdateTime().getTime();
-							userTwoId= userOneId;
+							userTwoId = userOneId;
 							userOneId = userId;
 						} else if (groupByUserIdMap.get(userId).get(0).getUpdateTime().getTime() > timeOne
 								&& groupByUserIdMap.get(userId).get(1).getUpdateTime().getTime() < timeTwo) {
 							timeOne = groupByUserIdMap.get(userId).get(0).getUpdateTime().getTime();
 							timeTwo = groupByUserIdMap.get(userId).get(1).getUpdateTime().getTime();
-							userTwoId= userOneId;
+							userTwoId = userOneId;
 							userOneId = userId;
 						}
 					}
 				}
-				List<String> userIdList =new ArrayList<>();
-				if(!StringUtils.isEmpty(userOneId) && StringUtils.isEmpty(userTwoId)) {
+				List<String> userIdList = new ArrayList<>();
+				if (!StringUtils.isEmpty(userOneId) && StringUtils.isEmpty(userTwoId)) {
 					userIdList.add(userOneId);
 					userDescriptionList = (List<User>) userRepository.findAllById(userIdList);
-				}else if(!StringUtils.isEmpty(userOneId) && !StringUtils.isEmpty(userTwoId)) {
+				} else if (!StringUtils.isEmpty(userOneId) && !StringUtils.isEmpty(userTwoId)) {
 					userIdList.add(userOneId);
 					userIdList.add(userTwoId);
 					userDescriptionList = (List<User>) userRepository.findAllById(userIdList);
 				}
-				
 
 			}
 		} catch (Exception e) {
@@ -331,75 +352,31 @@ public class QuestionServiceImpl implements QuestionService {
 		return userDescriptionList;
 	}
 
-	private String getExcelofEventSpecificQuestions(List<Questionare> questionareList) throws IOException {
+	public List<User> getEvoucherWinners(String eventId) {
+		List<User> userDescriptionList = new ArrayList<>();
+		try {
+			List<Questionare> acceptedQuestionsList = questionareRepository.findByEventIdAndStatus(eventId, "Accepted");
+			Map<String, Long> groupByUserIdMap = acceptedQuestionsList.stream()
+					.filter(ques -> ques.getStatus().equals("Accepted"))
+					.collect(Collectors.groupingBy(Questionare::getUserId, Collectors.counting()));
+			if (groupByUserIdMap.size() > 0) {
+				groupByUserIdMap.forEach((userId, count) -> {
+					if (count >= 6) {
+						userDescriptionList.add(userRepository.findById(userId).get());
+					}
+				});
 
-		Workbook workbook = new XSSFWorkbook();
-		CreationHelper createHelper = workbook.getCreationHelper();
-
-		// Create a Sheet
-		Sheet sheet = workbook.createSheet("Questions");
-
-		// Create a Font for styling header cells
-		Font headerFont = workbook.createFont();
-		headerFont.setBold(true);
-		headerFont.setFontHeightInPoints((short) 14);
-		headerFont.setColor(IndexedColors.RED.getIndex());
-
-		// Create a CellStyle with the font
-		CellStyle headerCellStyle = workbook.createCellStyle();
-		headerCellStyle.setFont(headerFont);
-
-		// Create a Row
-		Row headerRow = sheet.createRow(0);
-
-		// Create cells
-		for (int i = 0; i < columns.length; i++) {
-			Cell cell = headerRow.createCell(i);
-			cell.setCellValue(columns[i]);
-			cell.setCellStyle(headerCellStyle);
+			}
+		} catch (Exception e) {
+			log.error("Error in getEarlyBirds", e);
+			throw new QbthonQuestionareServiceException("Something went wrong", e);
 		}
-
-		int rowNum = 1;
-		for (Questionare questionare : questionareList) {
-			Row row = sheet.createRow(rowNum++);
-			row.createCell(0).setCellValue(questionare.getBlooms());
-			row.createCell(1).setCellValue(questionare.getDifficulty());
-			row.createCell(2).setCellValue(questionare.getCategory());
-			row.createCell(3).setCellValue(questionare.getMultiple());
-			row.createCell(4).setCellValue(questionare.getTopic());
-			row.createCell(5).setCellValue(questionare.getDescription());
-			row.createCell(6).setCellValue(questionare.getOptionOne());
-			row.createCell(7).setCellValue(questionare.getScoreOne());
-			row.createCell(8).setCellValue(questionare.getOptionTwo());
-			row.createCell(9).setCellValue(questionare.getScoreTwo());
-			row.createCell(10).setCellValue(questionare.getOptionThree());
-			row.createCell(11).setCellValue(questionare.getScoreThree());
-			row.createCell(12).setCellValue(questionare.getOptionFour());
-			row.createCell(13).setCellValue(questionare.getScoreFour());
-			row.createCell(14).setCellValue(questionare.getSource());
-		}
-
-		// Resize all columns to fit the content size
-		for (int i = 0; i < columns.length; i++) {
-			sheet.autoSizeColumn(i);
-		}
-
-		File myFile = new File("piku.xls");
-		// Write the output to a file
-		FileOutputStream fileOut = new FileOutputStream(myFile);
-		workbook.write(fileOut);
-		String absolutePath = myFile.getAbsolutePath();
-		fileOut.close();
-
-		// Closing the workbook
-		workbook.close();
-
-		return absolutePath;
+		return userDescriptionList;
 	}
 
 	private List<Questionare> getIdFromExcel(MultipartFile excelDataFile, String userId, String eventId)
 			throws IOException {
-		log.info("Inside getIdFromExcel method QuestionServiceImpl Service--->");
+		log.info("Inside getIdFromExcel method QuestionServiceImpl Service:::");
 		@SuppressWarnings("resource")
 		XSSFWorkbook workbook = new XSSFWorkbook(excelDataFile.getInputStream());
 		XSSFSheet worksheet = workbook.getSheetAt(1);
@@ -474,6 +451,9 @@ public class QuestionServiceImpl implements QuestionService {
 
 					if (cell.getColumnIndex() == 16) {// To match column index
 						questionare.setSource(getCellValue(cell));
+					}
+					if (cell.getColumnIndex() == 17) {// To match column index
+						questionare.setStack(getCellValue(cell));
 					}
 					questionare.setUserId(userId);
 

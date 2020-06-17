@@ -31,7 +31,8 @@ public interface QuestionaExcelMapper {
 		@Mapping(target = "option_Three", source = "questionarList.optionThree"),
 		@Mapping(target = "score_Three", source = "questionarList.scoreThree"),
 		@Mapping(target = "status", source = "questionarList.status"),
-		@Mapping(target = "associate_Id", source = "questionarList.userId")
+		@Mapping(target = "associate_Id", source = "questionarList.userId"),
+		@Mapping(target = "stack", source = "questionarList.stack")
 	})
 	QuestionarExcel  map(Questionare questionarList);
 	List<QuestionarExcel>  map(List<Questionare> questionarList);

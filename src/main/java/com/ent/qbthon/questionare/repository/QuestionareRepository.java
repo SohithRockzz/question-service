@@ -17,5 +17,7 @@ public interface QuestionareRepository extends CrudRepository<Questionare, Strin
 	List<Questionare> findByEventId(String eventId);
 
 	List<Questionare> findByEventIdAndStatus(String eventId, String questionStatus);
+
+	List<Questionare> findAllByEventIdAndAssignedSme(String eventId, String assignedSme);
 	
 }

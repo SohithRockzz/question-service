@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 
 import com.ent.qbthon.questionare.entity.Event;
 import com.ent.qbthon.questionare.model.EventDetails;
-import com.ent.qbthon.questionare.model.EventUserDetails;
 
 @Component
 @Mapper(componentModel = "spring")

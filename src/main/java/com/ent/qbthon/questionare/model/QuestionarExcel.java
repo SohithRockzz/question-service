@@ -15,6 +15,8 @@ public class QuestionarExcel implements Serializable {
 
 	//private String Id;
 	private String blooms_Taximony;
+	
+	private String stack;
 
 	private String difficulty;
 

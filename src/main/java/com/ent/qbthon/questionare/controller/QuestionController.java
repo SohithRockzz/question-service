@@ -33,7 +33,7 @@ public class QuestionController {
 
 	@PostMapping(value = "/create", produces = { MediaType.APPLICATION_JSON_VALUE })
 	public ResponseEntity<Boolean> creatQuestion(@RequestParam(value="quesFile", required=false) MultipartFile quesFiles,
-            @RequestParam(value="userId",required=false) String userId,
+            @RequestParam(value="userId",required=true) String userId,
             @RequestParam(value="eventId",required=false) String eventId,
             @RequestParam(value="questionnaire", required=false) String question) throws IOException {
 		log.info("Inside createQuestion Controller --->");
@@ -45,11 +45,19 @@ public class QuestionController {
 	public ResponseEntity<Map<String,List<Questionare>>> getQuestions(@RequestParam(required = true) String eventId
 			) {
 		log.info("Inside getQuestions Controller --->");
-		return new ResponseEntity<>(questionService.getQuestions(eventId), HttpStatus.OK);
+		return new ResponseEntity<>(questionService.getUserQuestions(eventId,null), HttpStatus.OK);
+	}
+	
+	@GetMapping(value = "/getSMEQuestionsList", produces = { MediaType.APPLICATION_JSON_VALUE })
+	public ResponseEntity<Map<String,List<Questionare>>> getQuestionsAssignedToSME(@RequestParam(required = true) String eventId,
+			@RequestParam(required = true) String smeId
+			) {
+		log.info("Inside getQuestionsAssignedToSME Controller --->");
+		return new ResponseEntity<>(questionService.getQuestionsAssignedToSME(eventId,smeId), HttpStatus.OK);
 	}
 	
 	@GetMapping(value = "/getUserQuestionList", produces = { MediaType.APPLICATION_JSON_VALUE })
-	public ResponseEntity<Map<String,List<Questionare>>> getUserQuestionsList(@RequestParam(required = true) String eventId,
+	public ResponseEntity<Map<String,List<Questionare>>> getUserQuestionsList(@RequestParam(required = false) String eventId,
 			@RequestParam(required = true) String userId) {
 		log.info("Inside getUserQuestions Controller --->");
 		return new ResponseEntity<>(questionService.getUserQuestions(eventId,userId), HttpStatus.OK);

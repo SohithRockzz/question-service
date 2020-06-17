@@ -13,11 +13,13 @@ import com.ent.qbthon.questionare.model.QuestionarExcel;
 
 public interface QuestionService {
 	public boolean saveQuestion(String userId, String eventId, MultipartFile userQuestionExcelDataFile,String question) throws IOException;
-	public Map<String,List<Questionare>> getQuestions(String eventId);
+	//public Map<String,List<Questionare>> getQuestions(String eventId);
 	public List<QuestionarExcel> getExcelData(String eventId);
 	public boolean updateQuestion(Questionare questionare);
 	public boolean updateReviewQuestionStatus(String questionId,String reviewStatus,String comment);
 	public List<User> getEarlyBirds(String eventId);
 	public Map<String,Map<String,Long>> getEventSpecificData(String eventId);
+	public List<User> getEvoucherWinners(String eventId);
 	public Map<String,List<Questionare>> getUserQuestions(String eventId, String userId);
+	public Map<String,List<Questionare>> getQuestionsAssignedToSME(String eventId, String userId);
 }

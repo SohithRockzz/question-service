@@ -30,6 +30,9 @@ public class Questionare {
 	@DynamoDBAttribute(attributeName = "question_update_time")
 	private Date updateTime;
 	
+	@DynamoDBAttribute(attributeName = "question_stack")
+	private String stack;
+	
 	
 	@DynamoDBAttribute(attributeName = "question_source")
 	private String source;
